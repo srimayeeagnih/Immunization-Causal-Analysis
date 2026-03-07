@@ -82,7 +82,7 @@ Ordinal-encoded to preserve income ordering.
 **Step 8 : Anomaly Inspection (Visual)**
 Violin plots for 6 numeric variables to visually check for outliers. No removal performed.
 
-**Step 9 : Recency Control: Years Since Vaccine Introduction**
+**Step 9 : Recency Control (Years Since Vaccine Introduction)**
 For each `country × antigen_family` pair, finds the first year with nonzero coverage and computes `years_since_intro = year − first_intro_year` (clipped at 0). Flags "established programs" (min coverage ≥ 50%) where true introduction pre-dates the data window, sets their `years_since_intro` to 0 and adds a binary `is_established_program` flag.
 
 Output saved to `pivot_dataset_fe.csv`.
