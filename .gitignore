@@ -14,4 +14,8 @@ __marimo__/
 
 # Large data files
 1.-preferential-tariffs.csv (1)/
-Data/Chemicals_Allied_Industries.csv
+data/raw/Chemicals_Allied_Industries.csv
+
+# Generated cache and logs
+data/processed/plot_cache.pkl
+**/run_log.txt

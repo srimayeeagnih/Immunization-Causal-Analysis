@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,7 +8,9 @@ from sklearn.impute import IterativeImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import LabelEncoder
 
-df= pd.read_csv(r"C:\Users\srima\OneDrive\Desktop\INSY674\Individual Project 1\pivot_dataset.csv")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+df = pd.read_csv(os.path.join(_ROOT, "data", "processed", "pivot_dataset.csv"))
 
 df.columns
 
@@ -112,4 +115,5 @@ df['is_established_program'] = df['established'].astype(int)
 df = df.drop(columns=['first_intro_year', 'min_coverage', 'established'])
 print(df.groupby('antigen_family')['years_since_intro'].describe().round(1))
 
-df.to_csv(r"C:\Users\srima\OneDrive\Desktop\INSY674\Individual Project 1\pivot_dataset_fe.csv", index=False)
+df.to_csv(os.path.join(_ROOT, "data", "processed", "pivot_dataset_fe.csv"), index=False)
+print(f"Saved -> data/processed/pivot_dataset_fe.csv")

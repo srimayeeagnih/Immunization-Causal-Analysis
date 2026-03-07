@@ -1,3 +1,4 @@
+import os
 import re
 
 import pandas as pd
@@ -7,8 +8,10 @@ import pycountry
 # Each row is a reporter-partner-product tariff record.
 # We aggregate to the reporter (country) level to get a country-level PTA indicator.
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 trade = pd.read_csv(
-    r"C:\Users\srima\OneDrive\Desktop\INSY674\Individual Project 1\Data\Chemicals_Allied_Industries.csv"
+    os.path.join(_ROOT, "data", "raw", "Chemicals_Allied_Industries.csv")
 )
 
 pta_agg = (
@@ -31,9 +34,7 @@ print(pta_agg.head(10).to_string())
 # from agreement names, and take the earliest entry-into-force year per country.
 # Countries not matched (no health PTA) are treated as never-treated in DiD.
 
-WTO_PLUS_PATH = (
-    r"C:\Users\srima\OneDrive\Desktop\INSY674\Individual Project 1\Data\pta-agreements_1.xls"
-)
+WTO_PLUS_PATH = os.path.join(_ROOT, "data", "raw", "pta-agreements_1.xls")
 
 wto_x = pd.read_excel(WTO_PLUS_PATH, sheet_name="WTO-X AC")
 pharma_mask = wto_x["Health"].ge(1)   # Health-provision PTAs only
@@ -120,9 +121,7 @@ print(pta_pharma_start.sort_values("pta_pharma_start_year").head(10).to_string()
 # country_iso3 is kept in feature_engineering.py (removed from the drop list).
 # Left-join so all panel rows are preserved; unmatched countries get NaN.
 
-df = pd.read_csv(
-    r"C:\Users\srima\OneDrive\Desktop\INSY674\Individual Project 1\pivot_dataset_fe.csv"
-)
+df = pd.read_csv(os.path.join(_ROOT, "data", "processed", "pivot_dataset_fe.csv"))
 
 df = (
     df
@@ -164,7 +163,7 @@ import numpy as np
 import pyfixest as pf
 
 PANEL_START = 2001
-OUT_DIR = r'C:\Users\srima\Downloads'
+OUT_DIR = os.path.join(_ROOT, "outputs", "visualization")
 
 # ── 4a: Classify treatment groups ────────────────────────────────────────────
 # Always-treated  (G_i < 2001): PTA predates panel -> EU bloc as upper-bound controls
@@ -653,45 +652,129 @@ country_res.loc[X_clust.index, 'cluster'] = kmeans.fit_predict(X_clust_scaled).a
 pca   = PCA(n_components=2)
 X_pca = pca.fit_transform(X_clust_scaled)
 
-# ── 5e: Plots ─────────────────────────────────────────────────────────────────
-fig, axes = plt.subplots(1, 3, figsize=(20, 6))
-
-s = country_res.sort_values('cate').reset_index(drop=True)
-axes[0].errorbar(
-    range(len(s)), s['cate'],
-    yerr=[s['cate'] - s['cate_lb'], s['cate_ub'] - s['cate']],
-    fmt='o', capsize=2, markersize=4, linewidth=0.6, color='steelblue', alpha=0.8,
+# Save intermediate objects so plot_heterogeneity.py can regenerate the figure
+# without re-running the full pipeline.
+import pickle as _pickle
+_cache = dict(
+    country_res = country_res,
+    X_pca       = X_pca,
+    pca         = pca,
+    kmeans      = kmeans,
+    X_clust_idx = X_clust.index.tolist(),
+    K           = K,
+    COVARS      = COVARS,
+    OUT_DIR     = OUT_DIR,
 )
-axes[0].axhline(0, color='black', linestyle='--', lw=0.8)
-axes[0].set(xlabel='Country (sorted by CATE)',
-            ylabel='CATE (pp immunization coverage)',
-            title='Country-Level CATEs\n(Linear DML, 90% CI)')
+_cache_path = os.path.join(_ROOT, 'data', 'processed', 'plot_cache.pkl')
+with open(_cache_path, 'wb') as _f:
+    _pickle.dump(_cache, _f)
+print(f'Plot cache saved -> {_cache_path}')
 
+# ── 5e: Plots ─────────────────────────────────────────────────────────────────
+# WHO region lookup (used to group countries in plot 1)
+_WHO = {
+    'AFG':'EMRO','ALB':'EURO','DZA':'EMRO','AGO':'AFRO','ARG':'AMRO',
+    'ARM':'EURO','AUS':'WPRO','AUT':'EURO','AZE':'EURO','BHR':'EMRO',
+    'BGD':'SEARO','BLR':'EURO','BEL':'EURO','BLZ':'AMRO','BEN':'AFRO',
+    'BIH':'EURO','BOL':'AMRO','BRA':'AMRO','BRN':'WPRO','BGR':'EURO',
+    'BFA':'AFRO','BDI':'AFRO','KHM':'WPRO','CMR':'AFRO','CAN':'AMRO',
+    'CHL':'AMRO','CHN':'WPRO','COL':'AMRO','CRI':'AMRO','HRV':'EURO',
+    'CUB':'AMRO','CYP':'EURO','CZE':'EURO','DNK':'EURO','DJI':'EMRO',
+    'DOM':'AMRO','ECU':'AMRO','EGY':'EMRO','SLV':'AMRO','EST':'EURO',
+    'ETH':'AFRO','FIN':'EURO','FRA':'EURO','DEU':'EURO','GHA':'AFRO',
+    'GRC':'EURO','GTM':'AMRO','HUN':'EURO','ISL':'EURO','IND':'SEARO',
+    'IDN':'SEARO','IRN':'EMRO','IRQ':'EMRO','IRL':'EURO','ISR':'EURO',
+    'ITA':'EURO','JAM':'AMRO','JPN':'WPRO','JOR':'EMRO','KAZ':'EURO',
+    'KEN':'AFRO','KOR':'WPRO','KWT':'EMRO','KGZ':'EURO','LAO':'WPRO',
+    'LVA':'EURO','LBN':'EMRO','LTU':'EURO','LUX':'EURO','MYS':'WPRO',
+    'MDV':'SEARO','MLT':'EURO','MDA':'EURO','MNG':'WPRO','MNE':'EURO',
+    'MAR':'EMRO','MOZ':'AFRO','MMR':'SEARO','NPL':'SEARO','NLD':'EURO',
+    'NZL':'WPRO','NIC':'AMRO','MKD':'EURO','NOR':'EURO','OMN':'EMRO',
+    'PAK':'EMRO','PAN':'AMRO','PRY':'AMRO','PER':'AMRO','PHL':'WPRO',
+    'POL':'EURO','PRT':'EURO','QAT':'EMRO','ROU':'EURO','RUS':'EURO',
+    'RWA':'AFRO','SAU':'EMRO','SEN':'AFRO','SRB':'EURO','SGP':'WPRO',
+    'SVK':'EURO','SVN':'EURO','ZAF':'AFRO','ESP':'EURO','LKA':'SEARO',
+    'SDN':'EMRO','SWE':'EURO','CHE':'EURO','TJK':'EURO','TZA':'AFRO',
+    'THA':'SEARO','TGO':'AFRO','TTO':'AMRO','TUN':'EMRO','TUR':'EURO',
+    'TKM':'EURO','UGA':'AFRO','UKR':'EURO','ARE':'EMRO','GBR':'EURO',
+    'USA':'AMRO','URY':'AMRO','UZB':'EURO','VNM':'WPRO','YEM':'EMRO',
+    'ZMB':'AFRO','ZWE':'AFRO',
+}
+
+fig, axes = plt.subplots(1, 3, figsize=(22, 7))
+
+# ── Plot 1: Mean CATE by WHO region (horizontal dot plot) ─────────────────────
+country_res['who_region'] = country_res['country_iso3'].map(_WHO).fillna('Other')
+_reg = (
+    country_res.groupby('who_region')['cate']
+    .agg(['mean', 'std', 'count'])
+    .reset_index()
+    .rename(columns={'mean': 'mean_cate', 'std': 'std_cate', 'count': 'n'})
+)
+_reg['ci90'] = 1.645 * _reg['std_cate'] / np.sqrt(_reg['n'])
+_reg = _reg.sort_values('mean_cate').reset_index(drop=True)
+
+axes[0].errorbar(
+    _reg['mean_cate'], _reg['who_region'],
+    xerr=_reg['ci90'],
+    fmt='o', capsize=4, markersize=8, color='steelblue',
+    linewidth=1.3, elinewidth=1.3, alpha=0.85,
+)
+axes[0].axvline(0, color='black', linestyle='--', lw=0.8)
+for _, row in _reg.iterrows():
+    axes[0].text(
+        row['mean_cate'] + row['ci90'] + 0.005, row['who_region'],
+        f"n={int(row['n'])}", va='center', fontsize=8, color='dimgrey'
+    )
+axes[0].set_xlabel('Mean CATE (pp immunization coverage)')
+axes[0].set_ylabel('WHO Region')
+axes[0].set_title('Mean CATE by WHO Region\n(Linear DML, 90% CI)', fontweight='bold')
+axes[0].tick_params(axis='y', labelsize=9)
+
+# ── Plot 2: CATE vs GDP per capita (coloured by cluster) ──────────────────────
+_plot_cr = country_res.dropna(subset=['cluster'])
 sc = axes[1].scatter(
-    country_res['gdp_per_capita_usd'], country_res['cate'],
-    c=country_res['cluster'], cmap='Set1', s=60, alpha=0.8,
+    _plot_cr['gdp_per_capita_usd'], _plot_cr['cate'],
+    c=_plot_cr['cluster'], cmap='Set1', s=60, alpha=0.8, vmin=0, vmax=2,
 )
 axes[1].axhline(0, color='black', linestyle='--', lw=0.8)
-axes[1].set(xlabel='Mean GDP per Capita (USD)', ylabel='CATE',
-            title='CATE vs GDP per Capita\n(coloured by cluster)')
-plt.colorbar(sc, ax=axes[1], label='Cluster')
+axes[1].set_xlabel('Mean GDP per Capita (USD)')
+axes[1].set_ylabel('CATE (pp immunization coverage)')
+axes[1].set_title('CATE vs GDP per Capita\n(coloured by cluster)', fontweight='bold')
+fig.colorbar(sc, ax=axes[1], label='Cluster', ticks=[0, 1, 2])
 
+# ── Plot 3: PCA country clusters with loadings annotation ─────────────────────
 cluster_colors = ['tomato', 'steelblue', 'seagreen']
 for k in range(K):
     mask = kmeans.labels_ == k
     axes[2].scatter(X_pca[mask, 0], X_pca[mask, 1],
-                    c=cluster_colors[k], label=f'Cluster {k}', s=60, alpha=0.8)
+                    c=cluster_colors[k], label=f'Cluster {k}', s=65, alpha=0.85)
 isos = country_res.loc[X_clust.index, 'country_iso3'].values
 for i, iso in enumerate(isos):
-    axes[2].annotate(iso, (X_pca[i, 0], X_pca[i, 1]), fontsize=6, alpha=0.6)
-axes[2].set(xlabel=f'PC1 ({pca.explained_variance_ratio_[0]:.1%})',
-            ylabel=f'PC2 ({pca.explained_variance_ratio_[1]:.1%})',
-            title='Country Clusters\n(CATE + Covariates, PCA)')
-axes[2].legend(fontsize=8)
+    axes[2].annotate(iso, (X_pca[i, 0], X_pca[i, 1]),
+                     fontsize=6.5, alpha=0.75,
+                     xytext=(3, 3), textcoords='offset points')
 
-fig.suptitle('Treatment Effect Heterogeneity -- Pharma PTA on Immunization Coverage',
-             fontsize=12, fontweight='bold')
-plt.tight_layout()
+# PC loadings annotation — explains what each axis represents
+_feat_names = ['CATE', 'GDP/cap', 'Health Exp%', 'OOP%', 'Population']
+_pc1 = sorted(zip(_feat_names, pca.components_[0]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_pc2 = sorted(zip(_feat_names, pca.components_[1]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_loading_txt = (
+    'PC1 drivers: ' + ' | '.join(f'{n} ({v:+.2f})' for n, v in _pc1) +
+    '\nPC2 drivers: ' + ' | '.join(f'{n} ({v:+.2f})' for n, v in _pc2)
+)
+axes[2].text(0.01, 0.01, _loading_txt, transform=axes[2].transAxes,
+             fontsize=6.5, va='bottom', color='dimgrey',
+             bbox=dict(boxstyle='round,pad=0.3', facecolor='lightyellow',
+                       alpha=0.8, edgecolor='silver'))
+axes[2].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.1%} variance explained)')
+axes[2].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.1%} variance explained)')
+axes[2].set_title('Country Clusters\n(CATE + Covariates, PCA)', fontweight='bold')
+axes[2].legend(fontsize=8, loc='upper right', framealpha=0.9, edgecolor='silver')
+
+fig.suptitle('Treatment Effect Heterogeneity — Pharma PTA on Immunization Coverage',
+             fontsize=13, fontweight='bold')
+plt.tight_layout(rect=[0, 0, 1, 0.94])
 plt.savefig(os.path.join(OUT_DIR, 'heterogeneity_clusters.png'), dpi=150, bbox_inches='tight')
 plt.show()
 print('\nHeterogeneity plot saved -> heterogeneity_clusters.png')
