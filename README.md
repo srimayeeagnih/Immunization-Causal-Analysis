@@ -1,10 +1,10 @@
-# Vaccine Causal Analysis — Pharma PTAs and Immunization Coverage
+# Vaccine Causal Analysis : Pharma PTAs and Immunization Coverage
 
 ## Project Overview
 
 Causal analysis of the effect of preferential trade agreements (PTAs) on childhood
 vaccine immunization coverage rates. The project examines how trade liberalization
-in healthcare — specifically PTAs containing explicit health provisions — affects
+in healthcare, specifically PTAs containing explicit health provisions, affects
 vaccine uptake in non-GAVI-eligible countries. The pipeline uses staggered
 difference-in-differences for treatment effect estimation, robust estimators
 (Sun & Abraham, LP-DiD) to address parallel trends concerns, regularized Linear
@@ -38,11 +38,11 @@ the effect vary systematically with country income level and health expenditure?
 
 ## Data Merging Strategy
 
-1. Load WUENIC non-EPI coverage sheets only — PCV3, ROTAC, HIB3 (vaccines most price-sensitive in middle-income markets)
+1. Load WUENIC non-EPI coverage sheets only : PCV3, ROTAC, HIB3 (vaccines most price-sensitive in middle-income markets)
 2. Merge World Bank covariates on `country_iso3 × year` (GDP, health expenditure, population, GNI, GAVI eligibility)
-3. Filter to non-GAVI countries (`gavi_eligible == 0`) — removes subsidised markets where the tariff → price → coverage chain is broken
+3. Filter to non-GAVI countries (`gavi_eligible == 0`) : removes subsidised markets where the tariff → price → coverage chain is broken
 4. Merge pharma tariff rate on `country_iso3` (static; no year dimension) and flag reporter countries
-5. Filter to reporter countries only (`reporter_flag == 1`) — retains only countries with direct tariff observations
+5. Filter to reporter countries only (`reporter_flag == 1`) : retains only countries with direct tariff observations
 6. Merge out-of-pocket (OOP) health expenditure on `country_iso3 × year`
 7. Construct interaction treatment: `tariff_x_oop = pharma_tariff_rate × oop_health_exp_pct / 100`
 8. Restrict to the target year range (default 1980–2023)
@@ -83,7 +83,7 @@ Ordinal-encoded to preserve income ordering.
 Violin plots for 6 numeric variables to visually check for outliers. No removal performed.
 
 **Step 9 — Recency Control: Years Since Vaccine Introduction**
-For each `country × antigen_family` pair, finds the first year with nonzero coverage and computes `years_since_intro = year − first_intro_year` (clipped at 0). Flags "established programs" (min coverage ≥ 50%) where true introduction pre-dates the data window — sets their `years_since_intro` to 0 and adds a binary `is_established_program` flag.
+For each `country × antigen_family` pair, finds the first year with nonzero coverage and computes `years_since_intro = year − first_intro_year` (clipped at 0). Flags "established programs" (min coverage ≥ 50%) where true introduction pre-dates the data window, sets their `years_since_intro` to 0 and adds a binary `is_established_program` flag.
 
 Output saved to `pivot_dataset_fe.csv`.
 
@@ -93,7 +93,7 @@ Output saved to `pivot_dataset_fe.csv`.
 
 ### Version 1 — Staggered DiD (Mixed Control Group)
 
-**What:** A single staggered DiD design using a mixed control group — EU-27 countries (always-treated, relabelled as `gname=0`) combined with a curated never-treated whitelist. Treatment was defined as any PTA containing Health, IPR, Consumer Protection, or Data Protection provisions (broad definition). Three estimators were run: TWFE (biased benchmark), Sun & Abraham (main), and LP-DiD (robustness). Cohort-level window cleaning was applied — entire cohorts were dropped if the latest-starting country in that cohort lacked sufficient pre-period data.
+**What:** A single staggered DiD design using a mixed control group : EU-27 countries (always-treated, relabelled as `gname=0`) combined with a curated never-treated whitelist. Treatment was defined as any PTA containing Health, IPR, Consumer Protection, or Data Protection provisions (broad definition). Three estimators were run: TWFE (biased benchmark), Sun & Abraham (main), and LP-DiD (robustness). Cohort-level window cleaning was applied — entire cohorts were dropped if the latest-starting country in that cohort lacked sufficient pre-period data.
 
 **Limitations:**
 - Contaminated control group: EU and never-treated countries were pooled into a single control group, mixing two structurally different counterfactuals (always-treated high-income EU vs. income-matched never-treated), requiring parallel trends to hold simultaneously across very different contexts
@@ -106,7 +106,7 @@ Output saved to `pivot_dataset_fe.csv`.
 ### Version 2 — Country-Level Window Cleaning
 
 **Improvements over V1:**
-- Switched to country-level window cleaning — only individual countries with insufficient pre-data are dropped, not their entire cohort; this recovered countries like JOR and MYS
+- Switched to country-level window cleaning : only individual countries with insufficient pre-data are dropped, not their entire cohort; this recovered countries like JOR and MYS
 - Narrowed the treatment definition to Health provisions only (dropping IPR/Consumer Protection/Data Protection), sharpening identification to PTAs with an explicit health access mandate
 - Improved per-cohort diagnostic: the binding constraint uses the latest-starting country (max, not min), preventing pyfixest from silently expanding the event-time grid
 
@@ -122,8 +122,8 @@ Output saved to `pivot_dataset_fe.csv`.
 **Improvements over V2:**
 Two explicit scenarios are run separately, each with its own `build_panel()` call and full estimator suite (TWFE + Sun & Abraham + LP-DiD):
 
-- **Scenario 1 (Convergence framing):** Treated countries vs. EU-27 controls only — asks whether staggered adopters converge toward the EU immunization baseline
-- **Scenario 2 (Causal counterfactual):** Treated countries vs. income-matched never-treated whitelist, with covariate adjustment (GDP per capita + health expenditure % GDP) to achieve conditional parallel trends — asks whether treated countries would have tracked never-treated trends absent a health PTA
+- **Scenario 1 (Convergence framing):** Treated countries vs. EU-27 controls only : asks whether staggered adopters converge toward the EU immunization baseline
+- **Scenario 2 (Causal counterfactual):** Treated countries vs. income-matched never-treated whitelist, with covariate adjustment (GDP per capita + health expenditure % GDP) to achieve conditional parallel trends : asks whether treated countries would have tracked never-treated trends absent a health PTA
 
 A cross-scenario overlay (LP-DiD S1 vs. S2) is produced to assess sensitivity to the choice of control group.
 
@@ -141,16 +141,16 @@ A cross-scenario overlay (LP-DiD S1 vs. S2) is produced to assess sensitivity to
 | W | None | Intentionally excluded — see below |
 
 **Pre-processing — time detrending:**
-Before DML runs, a Ridge model fits E[Y | year dummies] and subtracts its prediction from Y. This removes secular global immunization trends (rising coverage over time due to global health initiatives) unrelated to PTAs. The DML operates on `Y_detrended` — coverage variation unexplained by the calendar year.
+Before DML runs, a Ridge model fits E[Y | year dummies] and subtracts its prediction from Y. This removes secular global immunization trends (rising coverage over time due to global health initiatives) unrelated to PTAs. The DML operates on `Y_detrended`, which captures coverage variation unexplained by the calendar year.
 
 **Why year dummies are excluded from W:**
-`pta_active` is a deterministic step function — it flips to 1 at a country's PTA adoption year and stays there. Passing year dummies to `model_t` allows it to predict treatment near-perfectly, collapsing T residuals (ε_T) to near-zero and destabilizing second-stage CATE estimation. Treatment timing is driven by country economic characteristics, not the calendar year.
+`pta_active` is a deterministic step function : it flips to 1 at a country's PTA adoption year and stays there. Passing year dummies to `model_t` allows it to predict treatment near-perfectly, collapsing T residuals (ε_T) to near-zero and destabilizing second-stage CATE estimation. Treatment timing is driven by country economic characteristics, not the calendar year.
 
 **How it works:**
-1. `model_y` (RidgeCV pipeline) fits E[Y_detrended | X] — partials out country-level confounding from coverage
-2. `model_t` (LogisticRegressionCV pipeline) fits E[T | X] — partials out country-level confounding from treatment using country covariates only
+1. `model_y` (RidgeCV pipeline) fits E[Y_detrended | X] : partials out country-level confounding from coverage
+2. `model_t` (LogisticRegressionCV pipeline) fits E[T | X] : partials out country-level confounding from treatment using country covariates only
 3. Residuals: ε_Y = Y_detrended − Ê[Y] and ε_T = T − Ê[T]
-4. A linear model regresses ε_Y ~ ε_T × X — the slope gives CATE as a linear function of country characteristics
+4. A linear model regresses ε_Y ~ ε_T × X : the slope gives CATE as a linear function of country characteristics
 5. 3-fold cross-fitting prevents nuisance models from overfitting to the data they predict on
 
 **Output:** Overall ATE + a per-country CATE vector evaluated at each country's mean covariate profile, with 90% confidence intervals.
@@ -158,7 +158,7 @@ Before DML runs, a Ridge model fits E[Y | year dummies] and subtracts its predic
 ### Clustering
 
 **Step 5c — Country-level CATEs:**
-The fitted DML model is evaluated at each country's mean covariate vector to produce one CATE per country — the predicted change in (detrended, log1p) immunization coverage attributable to having a health PTA in force. 90% CIs are produced via `effect_interval()`.
+The fitted DML model is evaluated at each country's mean covariate vector to produce one CATE per country, which is the predicted change in (detrended, log1p) immunization coverage attributable to having a health PTA in force. 90% CIs are produced via `effect_interval()`.
 
 **Step 5d — K-means (K=3):**
 - Input: [CATE + GDP + health_exp + OOP + population] per country, sourced from `panel_s2` (treated + never-treated S2 controls)
@@ -177,7 +177,7 @@ The fitted DML model is evaluated at each country's mean covariate vector to pro
 ![S2 Sun & Abraham](Visualization/es_s2_sa_new.png)
 ![S2 LP-DiD](Visualization/es_s2_lpdid_new.png)
 
-Pre-treatment coefficients are statistically significant across both Scenario 1 and Scenario 2 event study results, undermining the parallel trends assumption. This likely reflects pre-existing differential trends driven by developmental factors (e.g. institutional quality, economic growth trajectories) rather than anticipation effects. The LP-DiD estimates do not attain significance — likely due to overfitting given the small treated sample. A positive treatment effect is observed across almost all post-treatment years in both scenarios against both always-treated and never-treated controls, consistent with PTAs facilitating vaccine market access. An anomalous estimate at year 12 relative to PTA adoption warrants attention and may reflect composition changes at the tail of the event window.
+Pre-treatment coefficients are statistically significant across both Scenario 1 and Scenario 2 event study results, undermining the parallel trends assumption. This likely reflects pre-existing differential trends driven by developmental factors (e.g. institutional quality, economic growth trajectories) rather than anticipation effects. The LP-DiD estimates do not attain significance, likely due to overfitting given the small treated sample. A positive treatment effect is observed across almost all post-treatment years in both scenarios against both always-treated and never-treated controls, consistent with PTAs facilitating vaccine market access. An anomalous estimate at year 12 relative to PTA adoption warrants attention and may reflect composition changes at the tail of the event window.
 
 ### Treatment Effect Heterogeneity
 
