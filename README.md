@@ -176,10 +176,10 @@ The fitted DML model is evaluated at each country's mean covariate vector to pro
 
 ### Event Study Results
 
-![S1 Sun & Abraham](Visualization/es_s1_sa_new.png)
-![S1 LP-DiD](Visualization/es_s1_lpdid_new.png)
-![S2 Sun & Abraham](Visualization/es_s2_sa_new.png)
-![S2 LP-DiD](Visualization/es_s2_lpdid_new.png)
+![S1 Sun & Abraham](outputs/visualization/es_s1_sa_new.png)
+![S1 LP-DiD](outputs/visualization/es_s1_lpdid_new.png)
+![S2 Sun & Abraham](outputs/visualization/es_s2_sa_new.png)
+![S2 LP-DiD](outputs/visualization/es_s2_lpdid_new.png)
 
 Pre-treatment coefficients are statistically significant across both Scenario 1 and Scenario 2 event study results, undermining the parallel trends assumption. This likely reflects pre-existing differential trends driven by developmental factors (e.g. institutional quality, economic growth trajectories) rather than anticipation effects. The LP-DiD estimates do not attain significance, likely due to overfitting given the small treated sample. A positive treatment effect is observed across almost all post-treatment years in both scenarios against both always-treated and never-treated controls, consistent with PTAs facilitating vaccine market access. An anomalous estimate at year 12 relative to PTA adoption warrants attention and may reflect composition changes at the tail of the event window.
 
