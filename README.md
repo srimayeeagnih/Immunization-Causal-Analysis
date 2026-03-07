@@ -181,9 +181,19 @@ Pre-treatment coefficients are statistically significant across both Scenario 1 
 
 ### Treatment Effect Heterogeneity
 
-![CATE Clusters](Visualization/CATE_clusters.png)
+![CATE Clusters](Visualization/heterogeneity_viz.png)
 
-Countries with higher CATEs are concentrated at the lower end of the GDP per capita distribution, while higher-income countries exhibit smaller marginal effects. This is consistent with the intuition that more developed countries already enjoy greater market access, higher affordability, and stronger health systems, leaving less room for PTAs to shift coverage at the margin. The low-CATE cluster (grey) consists predominantly of never-treated countries and low-income countries for whom the tariff → price → access → coverage pathway may be weaker or mediated by other structural barriers.
+**Plot 1: Mean CATE by WHO Region**
+
+SEARO has the highest mean effect (around 0.33 pp log-coverage), though the confidence interval is wide given only 3 countries, so this should be read with caution. EMRO comes next at around 0.19, driven largely by Gulf states like Saudi Arabia, Kuwait, Qatar, and Bahrain. WPRO follows at roughly 0.15, anchored by Malaysia and Thailand. AMRO and EURO are both near zero, which makes sense given that Western high-income countries have little room left for PTA-driven improvements. The single "Other" country shows a negative CATE and is likely a structural outlier.
+
+**Plot 2: CATE vs GDP per Capita**
+
+The clearest pattern here is that high-CATE countries cluster in the $10k to $40k GDP range (Cluster 0, red). Countries above $50k GDP (Cluster 1, blue) show near-zero or slightly negative CATEs, consistent with ceiling effects in already well-covered populations. Cluster 2 (green) sits at low GDP with CATEs close to zero, suggesting that structural barriers at that income level absorb whatever benefit a PTA might otherwise deliver. One red point with a CATE around 0.55 at very low GDP stands out as a potential outlier worth checking.
+
+**Plot 3: PCA Country Clusters**
+
+PC1 (38.7% of variance) is essentially an OOP vs CATE axis. Moving right means higher out-of-pocket expenditure and lower CATE, which is where Cluster 2 (lower-middle income countries) lands. Moving left means lower OOP and higher CATE, which captures both Cluster 0 and Cluster 1. PC2 (33.7%) then separates those two left-side clusters by health system quality: Cluster 1 (USA, Switzerland, Canada, Norway and peers) sits at the top left with high GDP and high health expenditure, while Cluster 0 (Gulf and ASEAN middle-income) sits at the bottom left with moderate health spending but much higher CATE. ARM is a notable outlier at the far right, isolated from the main cluster structure.
 
 ---
 
@@ -193,13 +203,6 @@ Countries with higher CATEs are concentrated at the lower end of the GDP per cap
 - **Short pre-treatment window:** Limited pre-period observations per cohort reduce the power to test and satisfy parallel trends
 - **Indirect causal chain:** The PTA → vaccine tariff → price → affordability → immunization coverage pathway involves multiple intermediate steps, each subject to confounding
 - **Small treatment sample:** Few countries adopted health PTAs within the panel window, limiting statistical power and the precision of CATE estimates
-
----
-
-## Next Steps
-
-- Extend analysis to out-of-pocket (OOP) health expenditure as an intermediate outcome
-- Cross-analysis comparing PTA effects on OOP vs. immunization coverage to verify the hypothesized mediation pathway
 
 ---
 
