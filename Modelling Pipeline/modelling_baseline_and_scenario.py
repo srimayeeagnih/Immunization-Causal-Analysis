@@ -158,11 +158,13 @@ df['relative_time'] = df['year'] - df['pta_pharma_start_year']
 df.loc[df['pta_pharma_start_year'] == 0, 'relative_time'] = float('nan')
 
 # ── Step 4: Staggered DiD -- Two-scenario design ──────────────────────────────
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pyfixest as pf
 
 PANEL_START = 2001
+OUT_DIR = r'C:\Users\srima\Downloads'
 
 # ── 4a: Classify treatment groups ────────────────────────────────────────────
 # Always-treated  (G_i < 2001): PTA predates panel -> EU bloc as upper-bound controls
@@ -251,6 +253,8 @@ def _sig_stars(p):
 def _event_times(tidy_df):
     if 't' in tidy_df.columns:
         return tidy_df['t'].values
+    if 'period' in tidy_df.columns:        # pyfixest aggregate() uses 'period'
+        return tidy_df['period'].values
     if 'term' in tidy_df.columns:
         extracted = tidy_df['term'].str.extract(r'(-?\d+)$')[0]
         if extracted.notna().all():
@@ -258,9 +262,14 @@ def _event_times(tidy_df):
     return np.arange(len(tidy_df))
 
 
-def plot_single_es(tidy_df, title, color, filename):
+def plot_single_es(tidy_df, title, color, filename, star_offset=None, xticklabels=None):
     """
     Individual event-study plot with 95% CI error bars and significance stars.
+    star_offset:  fixed y-offset above the point estimate for significance stars.
+                  Defaults to top of 95% CI bar (1.96*se + 0.3) if None.
+    xticklabels:  list of strings to use as x-tick labels (overrides raw axis values).
+                  Use this when the underlying positions are 0..N but the true event
+                  times are e.g. -3, -2, 0, 1, ..., 10 (skipping base period -1).
     """
     tidy_df = _normalize_tidy(tidy_df)
     times = _event_times(tidy_df)
@@ -278,14 +287,18 @@ def plot_single_es(tidy_df, title, color, filename):
         for t, est, se, pv in zip(times, ests, ses, tidy_df[pc].values):
             stars = _sig_stars(pv)
             if stars:
-                ax.text(t, est + 1.96 * se + 0.3, stars,
+                y_pos = est + (star_offset if star_offset is not None else 1.96 * se + 0.3)
+                ax.text(t, y_pos, stars,
                         ha='center', va='bottom', fontsize=9,
                         fontweight='bold', color=color)
 
     ax.text(0.01, 0.99, '* p<0.10   ** p<0.05   *** p<0.01',
             transform=ax.transAxes, fontsize=8, va='top', color='dimgrey')
     ax.set_xticks(times)
-    ax.tick_params(axis='x', rotation=45)
+    if xticklabels is not None and len(xticklabels) == len(times):
+        ax.set_xticklabels(xticklabels, rotation=45, ha='right')
+    else:
+        ax.tick_params(axis='x', rotation=45)
     ax.set_xlabel('Event time (years relative to PTA)')
     ax.set_ylabel('ATT -- immunization coverage (pp)')
     ax.set_title(title, fontsize=12, fontweight='bold')
@@ -419,11 +432,13 @@ print(f"  Treated: {_tr1['country_iso3'].nunique()} countries, "
 print(f"  EU controls: {panel_s1[panel_s1['gname']==0]['country_iso3'].nunique()} countries")
 
 plot_single_es(fit_twfe_s1.tidy(),
-               'S1: TWFE -- EU controls (benchmark)', 'tomato', 'es_s1_twfe.png')
+               'S1: TWFE -- EU controls (benchmark)', 'tomato', os.path.join(OUT_DIR, 'es_s1_twfe.png'))
+_sa_labels_s1 = [str(t) for t in sorted(list(range(_DESIRED_PRE, 0)) + list(range(0, post_s1 + 1))) if t != -1]
 plot_single_es(es_sa_s1,
-               'S1: Sun & Abraham -- EU controls', 'steelblue', 'es_s1_sa.png')
+               'S1: Sun & Abraham -- EU controls', 'steelblue', os.path.join(OUT_DIR, 'es_s1_sa.png'),
+               star_offset=0.05, xticklabels=_sa_labels_s1)
 plot_single_es(es_lp_s1,
-               'S1: LP-DiD -- EU controls', 'seagreen', 'es_s1_lpdid.png')
+               'S1: LP-DiD -- EU controls', 'seagreen', os.path.join(OUT_DIR, 'es_s1_lpdid.png'))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -484,12 +499,14 @@ print(f"  Treated: {_tr2['country_iso3'].nunique()} countries, "
 print(f"  Never-treated: {panel_s2[panel_s2['gname']==0]['country_iso3'].nunique()} countries")
 
 plot_single_es(fit_twfe_s2.tidy(),
-               'S2: TWFE -- Never-treated controls (benchmark)', 'tomato', 'es_s2_twfe.png')
+               'S2: TWFE -- Never-treated controls (benchmark)', 'tomato', os.path.join(OUT_DIR, 'es_s2_twfe.png'))
+_sa_labels_s2 = [str(t) for t in sorted(list(range(_DESIRED_PRE, 0)) + list(range(0, post_s2 + 1))) if t != -1]
 plot_single_es(es_sa_s2,
-               'S2: Sun & Abraham -- Never-treated controls', 'steelblue', 'es_s2_sa.png')
+               'S2: Sun & Abraham -- Never-treated controls', 'steelblue', os.path.join(OUT_DIR, 'es_s2_sa.png'),
+               star_offset=0.05, xticklabels=_sa_labels_s2)
 plot_single_es(es_lp_s2,
                'S2: LP-DiD -- Never-treated controls', 'seagreen',
-               'es_s2_lpdid.png')
+               os.path.join(OUT_DIR, 'es_s2_lpdid.png'))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -530,7 +547,7 @@ ax.set_title(
 )
 ax.legend(fontsize=10)
 plt.tight_layout()
-plt.savefig('es_cross_scenario.png', dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(OUT_DIR, 'es_cross_scenario.png'), dpi=150, bbox_inches='tight')
 plt.show()
 print('Cross-scenario comparison plot saved -> es_cross_scenario.png')
 
@@ -583,20 +600,32 @@ X_mod_cols = [f'{c}_avg' for c in COVARS]
 Y = ml['immunization_coverage'].values
 T = ml['pta_active'].values
 X = ml[X_mod_cols].values                                           # moderators
-W = pd.get_dummies(ml['year'], drop_first=True).astype(float).values   # time FE
+
+# Pre-partial out global time trend from Y using year dummies.
+# Year dummies are NOT passed to model_t — signing a health PTA is driven by
+# country characteristics, not by what year it is. Passing year dummies to
+# model_t would let it predict treatment almost perfectly (treatment is a
+# deterministic step function of time), collapsing T residuals to near-zero
+# and destabilising the second-stage CATE estimation.
+# Year dummies are used here only to remove secular coverage increases
+# (global immunisation trends) that are unrelated to PTAs.
+year_dummies = pd.get_dummies(ml['year'], drop_first=True).astype(float).values
+_time_model = Pipeline([('scaler', StandardScaler()), ('ridge', RidgeCV(alphas=[0.1, 1.0, 10.0, 100.0]))])
+_time_model.fit(year_dummies, Y)
+Y_detrended = Y - _time_model.predict(year_dummies)
 
 # ── 5b: Linear DML ────────────────────────────────────────────────────────────
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 dml = LinearDML(
-    model_y=model_y,
-    model_t=model_t,
+    model_y=model_y,      # fits E[Y_detrended | X] — country covariates only
+    model_t=model_t,      # fits E[T | X]           — country covariates only, no year dummies
     discrete_treatment=True,
     random_state=42,
     cv=3,
 )
-dml.fit(Y, T, X=X_scaled, W=W)
+dml.fit(Y_detrended, T, X=X_scaled, W=None)
 print('\nStep 5b -- Overall ATE (Linear DML):', dml.ate(X_scaled).round(4))
 
 # ── 5c: Country-level CATEs ───────────────────────────────────────────────────
@@ -663,7 +692,7 @@ axes[2].legend(fontsize=8)
 fig.suptitle('Treatment Effect Heterogeneity -- Pharma PTA on Immunization Coverage',
              fontsize=12, fontweight='bold')
 plt.tight_layout()
-plt.savefig('heterogeneity_clusters.png', dpi=150, bbox_inches='tight')
+plt.savefig(os.path.join(OUT_DIR, 'heterogeneity_clusters.png'), dpi=150, bbox_inches='tight')
 plt.show()
 print('\nHeterogeneity plot saved -> heterogeneity_clusters.png')
 
