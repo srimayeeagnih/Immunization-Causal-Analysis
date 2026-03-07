@@ -222,14 +222,15 @@ pip install pandas numpy matplotlib seaborn scikit-learn pyfixest econml \
 ### Pipeline (run in order)
 
 ```bash
-# Step 1: Data processing and merging
-python "Data Processing/data_strategy.py"
+# Run all steps end-to-end
+python run_all.py
 
-# Step 2: Feature engineering
-python "Feature Preparation/feature_engineering.py"
-
-# Step 3: Causal modelling — event studies, LinearDML, clustering
-python "Modelling Pipeline/modelling_baseline_and_scenario.py"
+# Or run steps individually:
+python src/data_processing.py       # Step 1: data loading and merging
+python src/feature_engineering.py   # Step 2: feature engineering
+python src/run_did.py               # Step 3: staggered DiD (saves panel_s2.parquet)
+python src/run_dml.py               # Step 4: LinearDML + clustering (requires Step 3)
+python src/plot_heterogeneity.py    # Re-plot heterogeneity figure instantly from cache
 ```
 
 Output plots are saved to `C:\Users\srima\Downloads\`. Update `OUT_DIR` in the modelling script to change the output directory.
