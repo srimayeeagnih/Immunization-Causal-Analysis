@@ -140,9 +140,9 @@ A cross-scenario overlay (LP-DiD S1 vs. S2) is produced to assess sensitivity to
 | Component | Variable | Role |
 |-----------|----------|------|
 | Y | `immunization_coverage` (log1p-transformed, then time-detrended) | Outcome |
-| T | `pta_active` (0/1) | Treatment — 1 once a country's health PTA is in force |
+| T | `pta_active` (0/1) | Treatment = 1 once a country's health PTA is in force |
 | X | Country-level mean covariates (GDP, health exp, OOP, population) | CATE moderators |
-| W | None | Intentionally excluded — see below |
+| W | None | Intentionally excluded (see below) |
 
 **Pre-processing : time detrending:**
 Before DML runs, a Ridge model fits E[Y | year dummies] and subtracts its prediction from Y. This removes secular global immunization trends (rising coverage over time due to global health initiatives) unrelated to PTAs. The DML operates on `Y_detrended`, which captures coverage variation unexplained by the calendar year.
