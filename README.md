@@ -185,7 +185,7 @@ Pre-treatment coefficients are statistically significant across both Scenario 1 
 
 ### Treatment Effect Heterogeneity
 
-![CATE Clusters](Visualization/heterogeneity_viz.png)
+![CATE Clusters](outputs/visualization/heterogeneity_viz.png)
 
 **Plot 1: Mean CATE by WHO Region**
 
