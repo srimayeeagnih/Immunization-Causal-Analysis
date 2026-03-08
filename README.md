@@ -106,12 +106,6 @@ Output saved to `pivot_dataset_fe.csv`.
 
 **What:** A single staggered DiD design using a mixed control group : EU-27 countries (always-treated, relabelled as `gname=0`) combined with a curated never-treated whitelist. Treatment was defined as any PTA containing Health, IPR, Consumer Protection, or Data Protection provisions (broad definition). Three estimators were run: TWFE (biased benchmark), Sun & Abraham (main), and LP-DiD (robustness). Cohort-level window cleaning was applied — entire cohorts were dropped if the latest-starting country in that cohort lacked sufficient pre-period data.
 
-**Limitations:**
-- Contaminated control group: EU and never-treated countries were pooled into a single control group, mixing two structurally different counterfactuals (always-treated high-income EU vs. income-matched never-treated), requiring parallel trends to hold simultaneously across very different contexts
-- Broad treatment definition: including IPR-only PTAs inflates the treated pool with agreements carrying no direct health access mandate, diluting the treatment signal
-- Cohort-level dropping was too aggressive: if one country in a cohort lacked a sufficient pre-period, the entire cohort was discarded, losing valid treated countries (e.g. JOR, MYS)
-- No covariate adjustment: parallel trends relied solely on group composition
-
 ---
 
 ### Version 2 : Country-Level Window Cleaning
@@ -120,11 +114,6 @@ Output saved to `pivot_dataset_fe.csv`.
 - Switched to country-level window cleaning : only individual countries with insufficient pre-data are dropped, not their entire cohort; this recovered countries like JOR and MYS
 - Narrowed the treatment definition to Health provisions only (dropping IPR/Consumer Protection/Data Protection), sharpening identification to PTAs with an explicit health access mandate
 - Improved per-cohort diagnostic: the binding constraint uses the latest-starting country (max, not min), preventing pyfixest from silently expanding the event-time grid
-
-**Remaining limitations:**
-- Still a single mixed control group: EU-27 and income-matched never-treated countries remained in one panel, making it ambiguous whether effects reflect convergence toward the EU baseline or genuine causal divergence from never-treated paths
-- Parallel trends still unconditional despite the narrower treatment definition
-- No cross-scenario sensitivity check to assess robustness to control group choice
 
 ---
 
@@ -149,13 +138,7 @@ A cross-scenario overlay (LP-DiD S1 vs. S2) is produced to assess sensitivity to
 | Y | `immunization_coverage` (log1p-transformed, then time-detrended) | Outcome |
 | T | `pta_active` (0/1) | Treatment = 1 once a country's health PTA is in force |
 | X | Country-level mean covariates (GDP, health exp, OOP, population) | CATE moderators |
-| W | None | Intentionally excluded (see below) |
-
-**Pre-processing : time detrending:**
-Before DML runs, a Ridge model fits E[Y | year dummies] and subtracts its prediction from Y. This removes secular global immunization trends (rising coverage over time due to global health initiatives) unrelated to PTAs. The DML operates on `Y_detrended`, which captures coverage variation unexplained by the calendar year.
-
-**Why year dummies are excluded from W:**
-`pta_active` is a deterministic step function : it flips to 1 at a country's PTA adoption year and stays there. Passing year dummies to `model_t` allows it to predict treatment near-perfectly, collapsing T residuals (ε_T) to near-zero and destabilizing second-stage CATE estimation. Treatment timing is driven by country economic characteristics, not the calendar year.
+| W | None | Intentionally excluded |
 
 **How it works:**
 1. `model_y` (RidgeCV pipeline) fits E[Y_detrended | X] : partials out country-level confounding from coverage
