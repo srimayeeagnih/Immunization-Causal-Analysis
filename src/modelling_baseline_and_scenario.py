@@ -258,6 +258,13 @@ def _event_times(tidy_df):
         extracted = tidy_df['term'].str.extract(r'(-?\d+)$')[0]
         if extracted.notna().all():
             return extracted.astype(int).values
+    # S&A aggregate(): event times stored as floats in the index (index.name == 'period')
+    if pd.api.types.is_numeric_dtype(tidy_df.index):
+        return tidy_df.index.astype(float).astype(int).values
+    # LP-DiD: term stored as string in index (e.g. 'time_to_treatment::-3')
+    extracted = pd.Series(tidy_df.index.astype(str)).str.extract(r'(-?\d+)$')[0]
+    if extracted.notna().all():
+        return extracted.astype(int).values
     return np.arange(len(tidy_df))
 
 
@@ -293,12 +300,17 @@ def plot_single_es(tidy_df, title, color, filename, star_offset=None, xticklabel
 
     ax.text(0.01, 0.99, '* p<0.10   ** p<0.05   *** p<0.01',
             transform=ax.transAxes, fontsize=8, va='top', color='dimgrey')
-    ax.set_xticks(times)
     if xticklabels is not None and len(xticklabels) == len(times):
+        # S&A: positional x-axis with custom labels (-3…-2, 0…10, skipping -1)
+        ax.set_xticks(times)
         ax.set_xticklabels(xticklabels, rotation=45, ha='right')
     else:
+        # LP-DiD: actual event-time axis — show every integer tick in the window
+        full_ticks = np.arange(int(times.min()), int(times.max()) + 1)
+        ax.set_xticks(full_ticks)
         ax.tick_params(axis='x', rotation=45)
-    ax.set_xlabel('Event time (years relative to PTA)')
+    ax.set_xlim(times.min() - 0.5, times.max() + 0.5)
+    ax.set_xlabel('Event time t  (years relative to PTA adoption year;  t = 0: adoption)')
     ax.set_ylabel('ATT -- immunization coverage (pp)')
     ax.set_title(title, fontsize=12, fontweight='bold')
     plt.tight_layout()
