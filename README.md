@@ -174,7 +174,7 @@ SEARO is the most negative region (~-0.14), driven almost entirely by Indonesia 
 
 **Plot 2: CATE vs GDP per Capita**
 
-Cluster 0 (upper-middle income, Gulf and ASEAN countries) shows a neutral to negative treatment effect (~-0.08), the most striking reversal from LinearDML which had flagged this group as the highest responders. Cluster 1 (high income, Anglosphere and EFTA) shows near-zero CATE (~+0.02), consistent with already-saturated immunization programs where PTAs add little. Cluster 2 (lower-middle income, Eastern Europe, LatAm, MENA) shows the only consistently positive CATEs (~+0.03), suggesting health PTAs may provide genuine market access benefits where immunization programs still have room to grow.
+Cluster 0 (upper-middle income, Gulf and ASEAN countries) shows a neutral to negative treatment effect (\~-0.08), the most striking reversal from LinearDML which had flagged this group as the highest responders. Cluster 1 (high income, Anglosphere and EFTA) shows near-zero CATE (\~+0.02), consistent with already-saturated immunization programs where PTAs add little. Cluster 2 (lower-middle income, Eastern Europe, LatAm, MENA) shows the only consistently positive CATEs (\~+0.03), suggesting health PTAs may provide genuine market access benefits where immunization programs still have room to grow.
 
 **Plot 3: PCA Country Clusters**
 
