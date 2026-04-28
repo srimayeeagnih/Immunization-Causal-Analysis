@@ -1,15 +1,17 @@
-# Causal Analysis : Pharma PTAs and Immunization Coverage
+# Immunization Causal Analysis : Pharma PTAs and Immunization Coverage
 
 ## Project Overview
 
 Causal analysis of the effect of preferential trade agreements (PTAs) on childhood
 vaccine immunization coverage rates. The project examines how trade liberalization
 in healthcare, specifically PTAs containing explicit health provisions, affects
-vaccine uptake in non-GAVI-eligible countries. The pipeline uses staggered
-difference-in-differences for treatment effect estimation, robust estimators
-(Sun & Abraham, LP-DiD) to address parallel trends concerns, regularized Linear
-DML for doubly robust heterogeneous effect estimation, and K-means clustering for
-country segmentation by treatment response profile.
+vaccine uptake in non-GAVI-eligible countries. The core methodology is Double
+Machine Learning (DML): Ridge regression and Logistic regression are used to partial
+out country-level mediator effects from both the outcome and treatment variables,
+with 3-fold cross-fitting to prevent overfitting. The resulting residuals are used
+to estimate heterogeneous treatment effects (CATEs) per country, which are then
+segmented via K-means clustering. Staggered DiD (Sun & Abraham, LP-DiD) is used
+as a complementary identification check.
 
 **Why This Project Matters**
 
@@ -100,98 +102,70 @@ Output saved to `pivot_dataset_fe.csv`.
 
 ---
 
-## Causal Framework
+## Double Machine Learning and Country Clustering
 
-### Version 1 : Staggered DiD (Mixed Control Group)
-
-**What:** A single staggered DiD design using a mixed control group : EU-27 countries (always-treated, relabelled as `gname=0`) combined with a curated never-treated whitelist. Treatment was defined as any PTA containing Health, IPR, Consumer Protection, or Data Protection provisions (broad definition). Three estimators were run: TWFE (biased benchmark), Sun & Abraham (main), and LP-DiD (robustness). Cohort-level window cleaning was applied — entire cohorts were dropped if the latest-starting country in that cohort lacked sufficient pre-period data.
-
----
-
-### Version 2 : Country-Level Window Cleaning
-
-**Improvements over V1:**
-- Switched to country-level window cleaning : only individual countries with insufficient pre-data are dropped, not their entire cohort; this recovered countries like JOR and MYS
-- Narrowed the treatment definition to Health provisions only (dropping IPR/Consumer Protection/Data Protection), sharpening identification to PTAs with an explicit health access mandate
-- Improved per-cohort diagnostic: the binding constraint uses the latest-starting country (max, not min), preventing pyfixest from silently expanding the event-time grid
-
----
-
-### Current Version : Explicit Two-Scenario Analysis
-
-**Improvements over V2:**
-Two explicit scenarios are run separately, each with its own `build_panel()` call and full estimator suite (TWFE + Sun & Abraham + LP-DiD):
-
-- **Scenario 1 (Convergence framing):** Treated countries vs. EU-27 controls only : asks whether staggered adopters converge toward the EU immunization baseline
-- **Scenario 2 (Causal counterfactual):** Treated countries vs. income-matched never-treated whitelist, with covariate adjustment (GDP per capita + health expenditure % GDP) to achieve conditional parallel trends : asks whether treated countries would have tracked never-treated trends absent a health PTA
-
-A cross-scenario overlay (LP-DiD S1 vs. S2) is produced to assess sensitivity to the choice of control group.
-
----
-
-## Linear DML and Country Clustering
-
-### Linear DML Setup
+### DML Setup
 
 | Component | Variable | Role |
 |-----------|----------|------|
-| Y | `immunization_coverage` (log1p-transformed, then time-detrended) | Outcome |
-| T | `pta_active` (0/1) | Treatment = 1 once a country's health PTA is in force |
+| Y | `immunization_coverage` (log1p-transformed, time-detrended) | Outcome |
+| T | `pta_active` (0/1) | Treatment = 1 once health PTA is in force |
 | X | Country-level mean covariates (GDP, health exp, OOP, population) | CATE moderators |
-| W | None | Intentionally excluded |
 
-**How it works:**
-1. `model_y` (RidgeCV pipeline) fits E[Y_detrended | X] : partials out country-level confounding from coverage
-2. `model_t` (LogisticRegressionCV pipeline) fits E[T | X] : partials out country-level confounding from treatment using country covariates only
-3. Residuals: ε_Y = Y_detrended − Ê[Y] and ε_T = T − Ê[T]
-4. A linear model regresses ε_Y ~ ε_T × X : the slope gives CATE as a linear function of country characteristics
-5. 3-fold cross-fitting prevents nuisance models from overfitting to the data they predict on
+**Partialling out:** Two regularized nuisance models remove the influence of country-level covariates X from both the outcome and the treatment before estimating the causal effect:
 
-**Output:** Overall ATE + a per-country CATE vector evaluated at each country's mean covariate profile, with 90% confidence intervals.
+- **`model_y` — RidgeCV:** Fits E[Y | X], where ridge regularization shrinks coefficients to handle correlated covariates (GDP, OOP, health expenditure are correlated). Internal CV selects the optimal λ. Residual ε_Y captures coverage variation *not explained* by country characteristics.
+- **`model_t` — LogisticRegressionCV:** Fits E[T | X] (propensity score), where L2 regularization prevents overfitting to the small treated sample. Internal CV selects C. Residual ε_T captures treatment variation *not explained* by country characteristics.
+
+**Cross-fitting (3-fold):** Data is split into 3 folds. For each fold, nuisance models are trained on the other 2 folds and predict on the held-out fold — ensuring ε_Y and ε_T are always out-of-sample predictions, which prevents bias in the final effect estimate.
+
+**CATE estimation:** A linear model regresses ε_Y ~ ε_T × X. The interaction slope gives each country a CATE evaluated at its mean covariate profile, with 90% confidence intervals via `effect_interval()`.
+
+**Output:** Overall ATE + per-country CATE vector.
 
 ### Clustering
 
-**Step 5c : Country-level CATEs:**
-The fitted DML model is evaluated at each country's mean covariate vector to produce one CATE per country, which is the predicted change in (detrended, log1p) immunization coverage attributable to having a health PTA in force. 90% CIs are produced via `effect_interval()`.
+K-means (K=3) clusters countries on [CATE + GDP + health_exp + OOP + population], all standardized, producing low / medium / high treatment response groups. PCA reduces the clustering space to 2D for visualization. Input is sourced from `panel_s2` (treated + S2 never-treated controls).
 
-**Step 5d : K-means (K=3):**
-- Input: [CATE + GDP + health_exp + OOP + population] per country, sourced from `panel_s2` (treated + never-treated S2 controls)
-- All variables standardized before clustering
-- K=3 produces low / medium / high treatment response groups
-- PCA reduces to 2D for visualization
+---
+
+## Causal Framework
+
+### Staggered DiD (Identification Check)
+
+Two scenarios are run as complementary identification checks alongside DML, each using TWFE (benchmark), Sun & Abraham (main), and LP-DiD (robustness):
+
+- **Scenario 1 (Convergence):** Treated countries vs. EU-27 controls
+- **Scenario 2 (Counterfactual):** Treated countries vs. income-matched never-treated whitelist with covariate adjustment (GDP, health expenditure)
+
+Country-level window cleaning drops individual countries lacking ≥3 pre-treatment years rather than their entire cohort. Treatment = PTAs with explicit **Health provisions only**.
 
 ---
 
 ## Key Findings
 
-### Event Study Results
+### Treatment Effect Heterogeneity (DML)
 
-![S1 Sun & Abraham](outputs/visualization/es_s1_sa.png)
-![S1 LP-DiD](outputs/visualization/es_s1_lpdid.png)
-![S2 Sun & Abraham](outputs/visualization/es_s2_sa.png)
-![S2 LP-DiD](outputs/visualization/es_s2_lpdid.png)
-
-Pre-treatment coefficients are statistically significant across both Scenario 1 and Scenario 2 event study results, undermining the parallel trends assumption. This likely reflects pre-existing differential trends driven by developmental factors (e.g. institutional quality, economic growth trajectories) rather than anticipation effects. The LP-DiD estimates do not attain significance, likely due to overfitting given the small treated sample. A positive treatment effect is observed across almost all post-treatment years in both scenarios against both always-treated and never-treated controls, consistent with PTAs facilitating vaccine market access. An anomalous estimate at year 12 relative to PTA adoption warrants attention and may reflect composition changes at the tail of the event window.
-
-### Treatment Effect Heterogeneity
-
-![Mean_CATE](outputs/visualization/Mean_CATE.png)
+![Heterogeneity](outputs/visualization/heterogeneity_viz.png)
 
 **Plot 1: Mean CATE by WHO Region**
 
-SEARO has the highest mean effect (around 0.33 pp log-coverage), though the confidence interval is wide given only 3 countries, so this should be read with caution. EMRO comes next at around 0.19, driven largely by Gulf states like Saudi Arabia, Kuwait, Qatar, and Bahrain. WPRO follows at roughly 0.15, anchored by Malaysia and Thailand. AMRO and EURO are both near zero, which makes sense given that Western high-income countries have little room left for PTA-driven improvements. The single "Other" country shows a negative CATE and is likely a structural outlier.
-
-![CATE_vs_GDP](outputs/visualization/CATE_vs_GDP.png)
+SEARO has the highest mean effect (~0.33 pp log-coverage), though CIs are wide given only 3 countries. EMRO follows at ~0.19, driven by Gulf states (Saudi Arabia, Kuwait, Qatar, Bahrain). WPRO is ~0.15, anchored by Malaysia and Thailand. AMRO and EURO are near zero — consistent with ceiling effects in already well-covered populations.
 
 **Plot 2: CATE vs GDP per Capita**
 
-The clearest pattern here is that high-CATE countries cluster in the $10k to $40k GDP range (Cluster 0, red). Countries above $50k GDP (Cluster 1, blue) show near-zero or slightly negative CATEs, consistent with ceiling effects in already well-covered populations. Cluster 2 (green) sits at low GDP with CATEs close to zero, suggesting that structural barriers at that income level absorb whatever benefit a PTA might otherwise deliver. One red point with a CATE around 0.55 at very low GDP stands out as a potential outlier worth checking.
-
-![PCA](outputs/visualization/PCA.png)
+High-CATE countries cluster in the $10k–$40k GDP range (Cluster 0). Countries above $50k GDP (Cluster 1) show near-zero or negative CATEs, consistent with saturation effects. Cluster 2 at low GDP also shows near-zero CATEs, suggesting structural barriers absorb any PTA benefit at that income level.
 
 **Plot 3: PCA Country Clusters**
 
-PC1 (38.7% of variance) is essentially an OOP vs CATE axis. Moving right means higher out-of-pocket expenditure and lower CATE, which is where Cluster 2 (lower-middle income countries) lands. Moving left means lower OOP and higher CATE, which captures both Cluster 0 and Cluster 1. PC2 (33.7%) then separates those two left-side clusters by health system quality: Cluster 1 (USA, Switzerland, Canada, Norway and peers) sits at the top left with high GDP and high health expenditure, while Cluster 0 (Gulf and ASEAN middle-income) sits at the bottom left with moderate health spending but much higher CATE. ARM is a notable outlier at the far right, isolated from the main cluster structure.
+PC1 (38.7% of variance) is an OOP vs CATE axis — higher OOP maps to lower CATE (Cluster 2, lower-middle income). PC2 (33.7%) separates by health system quality: Cluster 1 (USA, Switzerland, Canada, Norway) sits top-left with high GDP and high health expenditure; Cluster 0 (Gulf and ASEAN middle-income) sits bottom-left with moderate spending but higher CATE. ARM is a notable structural outlier.
+
+### Event Study Results (DiD Check)
+
+![S1 Sun & Abraham](outputs/visualization/es_s1_sa.png)
+![S2 Sun & Abraham](outputs/visualization/es_s2_sa.png)
+
+Pre-treatment coefficients are statistically significant in both scenarios, indicating pre-existing divergent trends that limit causal identification via DiD alone. A positive post-treatment effect is observed across most post-treatment years, consistent with PTAs facilitating vaccine market access. LP-DiD estimates do not reach significance, likely due to the small treated sample. This motivates the DML approach as the primary estimator.
 
 ---
 
