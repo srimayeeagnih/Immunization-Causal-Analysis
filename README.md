@@ -36,9 +36,9 @@ the effect vary systematically with country income level and health expenditure?
 | 3 | Preferential Tariffs | Static preferential tariff rates across all products | `1. Preferential Tariffs.csv` / `.parquet` |
 | 4 | Chemicals & Allied Industries Tariffs | HS Chapter 30 pharma-specific tariff subset (proxy for vaccine-related tariffs); used to derive country-level PTA flags | `Data/Chemicals_Allied_Industries.csv` |
 | 5 | WTO-X PTA Dataset | Agreement-level dataset coding which PTAs contain health, IPR, consumer protection, and data protection provisions; used to extract health-PTA entry-into-force years per country | `Data/pta-agreements_1.xls` |
-| 6 | World Bank WDI API | GDP per capita, health expenditure (% GDP), population, GNI per capita — pulled via `wbdata` (indicators: `NY.GDP.PCAP.CD`, `SH.XPD.CHEX.GD.ZS`, `SP.POP.TOTL`, `NY.GNP.PCAP.CD`) | API — cached to `wb_covariates.parquet` |
-| 7 | World Bank WDI API — OOP | Out-of-pocket health expenditure (% of current health expenditure) — pulled via `wbdata` (indicator: `SH.XPD.OOPC.CH.ZS`) | API — cached to `oop_expenditure.parquet` |
-| 8 | WITS/TRAINS API | Annual MFN tariff time series — pulled via `world_trade_data` | API — optional export to CSV |
+| 6 | World Bank WDI API | GDP per capita, health expenditure (% GDP), population, GNI per capita, pulled via `wbdata` (indicators: `NY.GDP.PCAP.CD`, `SH.XPD.CHEX.GD.ZS`, `SP.POP.TOTL`, `NY.GNP.PCAP.CD`) | API, cached to `wb_covariates.parquet` |
+| 7 | World Bank WDI API (OOP) | Out-of-pocket health expenditure (% of current health expenditure), pulled via `wbdata` (indicator: `SH.XPD.OOPC.CH.ZS`) | API, cached to `oop_expenditure.parquet` |
+| 8 | WITS/TRAINS API | Annual MFN tariff time series, pulled via `world_trade_data` | API, optional export to CSV |
 
 ---
 
@@ -78,7 +78,7 @@ Captures how total health spending relates to the private cost burden on individ
 Checks missingness counts and percentages for `health_exp_pct_gdp` and `oop_health_exp_pct`, overall and by country.
 
 **Step 4 : MICE Imputation**
-Imputes missing values in `health_exp_pct_gdp` and `oop_health_exp_pct` using Multivariate Imputation by Chained Equations (linear regression, 10 iterations) — the two variables impute each other iteratively.
+Imputes missing values in `health_exp_pct_gdp` and `oop_health_exp_pct` using Multivariate Imputation by Chained Equations (linear regression, 10 iterations); the two variables impute each other iteratively.
 
 **Step 5 : Categorical Encoding**
 Rare countries (< 0.5% frequency) collapsed into "Other". Label-encodes `unicef_region`, `country`, `vaccine`, `antigen_family`. `reporter_flag` and `gavi_eligible` left as-is (already binary).
@@ -114,10 +114,10 @@ Output saved to `pivot_dataset_fe.csv`.
 
 **Partialling out:** Two regularized nuisance models remove the influence of country-level covariates X from both the outcome and the treatment before estimating the causal effect:
 
-- **`model_y` — RidgeCV:** Fits E[Y | X], where ridge regularization shrinks coefficients to handle correlated covariates (GDP, OOP, health expenditure are correlated). Internal CV selects the optimal λ. Residual ε_Y captures coverage variation *not explained* by country characteristics.
-- **`model_t` — LogisticRegressionCV:** Fits E[T | X] (propensity score), where L2 regularization prevents overfitting to the small treated sample. Internal CV selects C. Residual ε_T captures treatment variation *not explained* by country characteristics.
+- **`model_y` (RidgeCV):** Fits E[Y | X], where ridge regularization shrinks coefficients to handle correlated covariates (GDP, OOP, health expenditure are correlated). Internal CV selects the optimal λ. Residual ε_Y captures coverage variation *not explained* by country characteristics.
+- **`model_t` (LogisticRegressionCV):** Fits E[T | X] (propensity score), where L2 regularization prevents overfitting to the small treated sample. Internal CV selects C. Residual ε_T captures treatment variation *not explained* by country characteristics.
 
-**Cross-fitting (3-fold):** Data is split into 3 folds. For each fold, nuisance models are trained on the other 2 folds and predict on the held-out fold — ensuring ε_Y and ε_T are always out-of-sample predictions, which prevents bias in the final effect estimate.
+**Cross-fitting (3-fold):** Data is split into 3 folds. For each fold, nuisance models are trained on the other 2 folds and predict on the held-out fold, ensuring ε_Y and ε_T are always out-of-sample predictions, which prevents bias in the final effect estimate.
 
 **CATE estimation:** A linear model regresses ε_Y ~ ε_T × X. The interaction slope gives each country a CATE evaluated at its mean covariate profile, with 90% confidence intervals via `effect_interval()`.
 
@@ -144,7 +144,7 @@ Country-level window cleaning drops individual countries lacking ≥3 pre-treatm
 
 ## Key Findings
 
-### Treatment Effect Heterogeneity — Linear DML
+### Treatment Effect Heterogeneity : Linear DML
 
 ![Linear DML Heterogeneity](outputs/visualization/heterogeneity_clusters.png)
 
@@ -162,7 +162,7 @@ PC1 (38.7% of variance) is an OOP vs CATE axis: higher OOP maps to lower CATE (C
 
 ---
 
-### Treatment Effect Heterogeneity — Causal Forest DML
+### Treatment Effect Heterogeneity : Causal Forest DML
 
 ![Causal Forest Heterogeneity](outputs/visualization/heterogeneity_causal_forest.png)
 
