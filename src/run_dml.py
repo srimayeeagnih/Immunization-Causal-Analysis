@@ -204,13 +204,6 @@ for i, iso in enumerate(isos):
                      fontsize=6.5, alpha=0.75, xytext=(3, 3), textcoords="offset points")
 
 _feat_names = ["CATE", "GDP/cap", "Health Exp%", "OOP%", "Population"]
-_pc1 = sorted(zip(_feat_names, pca.components_[0]), key=lambda x: abs(x[1]), reverse=True)[:3]
-_pc2 = sorted(zip(_feat_names, pca.components_[1]), key=lambda x: abs(x[1]), reverse=True)[:3]
-_loading_txt = ("PC1 drivers: " + " | ".join(f"{n} ({v:+.2f})" for n, v in _pc1) +
-                "\nPC2 drivers: " + " | ".join(f"{n} ({v:+.2f})" for n, v in _pc2))
-axes[2].text(0.01, 0.01, _loading_txt, transform=axes[2].transAxes,
-             fontsize=6.5, va="bottom", color="dimgrey",
-             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.85, edgecolor="silver"))
 axes[2].set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.1%} variance explained)", labelpad=8)
 axes[2].set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.1%} variance explained)", labelpad=8)
 axes[2].set_title("Country Clusters\n(CATE + Covariates, PCA)", fontweight="bold", pad=10)
@@ -218,7 +211,18 @@ axes[2].legend(fontsize=8, loc="upper right", framealpha=0.9, edgecolor="silver"
 
 fig.suptitle("Treatment Effect Heterogeneity: Pharma PTA on Immunization Coverage",
              fontsize=13, fontweight="bold")
-plt.tight_layout(rect=[0, 0, 1, 0.94])
+plt.tight_layout(rect=[0, 0.10, 1, 0.94])
+
+_lin_pc1 = sorted(zip(_feat_names, pca.components_[0]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_lin_pc2 = sorted(zip(_feat_names, pca.components_[1]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_lin_ann = (
+    f"PCA Factor Loadings  (Linear DML)\n"
+    f"PC1 ({pca.explained_variance_ratio_[0]:.0%}):  " + "  |  ".join(f"{n} ({v:+.2f})" for n, v in _lin_pc1) +
+    f"\nPC2 ({pca.explained_variance_ratio_[1]:.0%}):  " + "  |  ".join(f"{n} ({v:+.2f})" for n, v in _lin_pc2)
+)
+fig.text(0.5, 0.01, _lin_ann, ha="center", va="bottom", fontsize=7.5,
+         bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.6, edgecolor="steelblue"))
+
 _out = os.path.join(OUT_DIR, "heterogeneity_clusters.png")
 plt.savefig(_out, dpi=150, bbox_inches="tight")
 plt.show()
@@ -231,4 +235,159 @@ print("\n-- Countries per cluster --")
 for k in range(K):
     cs = sorted(country_res[country_res["cluster"] == k]["country_iso3"].tolist())
     print(f"Cluster {k}: {cs}")
-print("\nDML pipeline complete.")
+print("\nLinear DML pipeline complete.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Step 6: Causal Forest DML
+# ══════════════════════════════════════════════════════════════════════════════
+from econml.dml import CausalForestDML
+
+# ── 6a: Prepare data ──────────────────────────────────────────────────────────
+cf_panel = panel_s2.copy()
+cf_panel["pta_active"] = (
+    (cf_panel["gname"] > 0) & (cf_panel["year"] >= cf_panel["gname"])
+).astype(float)
+
+cf_ml = cf_panel.dropna(subset=["immunization_coverage"] + COVARS).copy()
+cf_country_avg = cf_ml.groupby("country_iso3")[COVARS].mean()
+cf_ml = cf_ml.join(
+    cf_country_avg.rename(columns={c: f"{c}_avg" for c in COVARS}),
+    on="country_iso3"
+)
+X_mod_cols = [f"{c}_avg" for c in COVARS]
+
+Y_cf = cf_ml["immunization_coverage"].values
+T_cf = cf_ml["pta_active"].values
+X_cf = cf_ml[X_mod_cols].values
+W_cf = pd.get_dummies(cf_ml["year"], drop_first=True).astype(float).values  # year FEs as nuisance
+
+# ── 6b: Fit Causal Forest DML ─────────────────────────────────────────────────
+cf_scaler   = StandardScaler()
+X_cf_scaled = cf_scaler.fit_transform(X_cf)
+
+cf_model = CausalForestDML(
+    n_estimators=1000,
+    min_samples_leaf=5,
+    max_depth=4,
+    discrete_treatment=True,
+    random_state=42,
+    cv=3,
+    n_jobs=-1,
+)
+cf_model.fit(Y_cf, T_cf, X=X_cf_scaled, W=W_cf)
+print("\nStep 6b -- Overall ATE (Causal Forest DML):", cf_model.ate(X_cf_scaled).round(4))
+
+# ── 6c: Country-level CATEs ───────────────────────────────────────────────────
+cf_country_Xmat     = cf_scaler.transform(cf_country_avg[COVARS].values)
+cf_cate             = cf_model.effect(cf_country_Xmat)
+cf_cate_lb, cf_cate_ub = cf_model.effect_interval(cf_country_Xmat, alpha=0.10)
+
+cf_country_res = cf_country_avg.reset_index().copy()
+cf_country_res["cate"]    = cf_cate
+cf_country_res["cate_lb"] = cf_cate_lb
+cf_country_res["cate_ub"] = cf_cate_ub
+
+print("\nStep 6c -- All countries by CATE (Causal Forest):")
+print(cf_country_res[["country_iso3", "cate", "cate_lb", "cate_ub"]]
+      .sort_values("cate", ascending=False).to_string())
+cf_country_res.to_csv(os.path.join(_ROOT, "data", "processed", "cf_cates.csv"), index=False)
+
+# ── 6d: K-means clustering ────────────────────────────────────────────────────
+cf_X_clust        = cf_country_res[["cate"] + COVARS].dropna()
+cf_X_clust_scaled = StandardScaler().fit_transform(cf_X_clust)
+
+cf_kmeans = KMeans(n_clusters=K, random_state=42, n_init=20)
+cf_country_res.loc[cf_X_clust.index, "cluster"] = cf_kmeans.fit_predict(cf_X_clust_scaled).astype(float)
+
+cf_pca   = PCA(n_components=2)
+cf_X_pca = cf_pca.fit_transform(cf_X_clust_scaled)
+
+# ── 6e: Plots ─────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+fig.patch.set_facecolor("#f8f8f8")
+for ax in axes:
+    ax.set_facecolor("#f8f8f8")
+
+# Panel A: mean CATE by WHO region
+cf_country_res["who_region"] = cf_country_res["country_iso3"].map(_WHO).fillna("Other")
+_cf_reg = (
+    cf_country_res.groupby("who_region")["cate"]
+    .agg(["mean", "std", "count"]).reset_index()
+    .rename(columns={"mean": "mean_cate", "std": "std_cate", "count": "n"})
+)
+_cf_reg["ci90"] = 1.645 * _cf_reg["std_cate"] / np.sqrt(_cf_reg["n"])
+_cf_reg = _cf_reg.sort_values("mean_cate").reset_index(drop=True)
+
+axes[0].errorbar(_cf_reg["mean_cate"], _cf_reg["who_region"], xerr=_cf_reg["ci90"],
+                 fmt="o", capsize=4, markersize=8, color="steelblue",
+                 linewidth=1.3, elinewidth=1.3, alpha=0.9, zorder=2)
+axes[0].axvline(0, color="black", linestyle="--", lw=0.8, alpha=0.6)
+for _, row in _cf_reg.iterrows():
+    axes[0].text(row["mean_cate"] + row["ci90"] + 0.005, row["who_region"],
+                 f"n={int(row['n'])}", va="center", fontsize=8, color="dimgrey")
+axes[0].set_xlabel("Mean CATE (pp immunization coverage)", labelpad=8)
+axes[0].set_ylabel("WHO Region", labelpad=14)
+axes[0].set_title("Mean CATE by WHO Region\n(Causal Forest DML, 90% CI)", fontweight="bold", pad=10)
+axes[0].tick_params(axis="y", labelsize=9)
+
+# Panel B: CATE vs GDP coloured by cluster
+cf_plot = cf_country_res.dropna(subset=["cluster"])
+_cmap3  = ListedColormap(["tomato", "steelblue", "seagreen"])
+_norm3  = BoundaryNorm([0, 1, 2, 3], _cmap3.N)
+sc = axes[1].scatter(
+    cf_plot["gdp_per_capita_usd"], cf_plot["cate"],
+    c=cf_plot["cluster"], cmap=_cmap3, norm=_norm3,
+    s=65, alpha=0.75, edgecolors="white", linewidths=0.5,
+)
+axes[1].axhline(0, color="black", linestyle="--", lw=0.8)
+axes[1].set_xlabel("Mean GDP per Capita (USD)")
+axes[1].set_ylabel("CATE")
+axes[1].set_title("CATE vs GDP per Capita\n(coloured by cluster)", fontweight="bold")
+cb = fig.colorbar(sc, ax=axes[1], label="Cluster", ticks=[0.5, 1.5, 2.5])
+cb.ax.set_yticklabels(["Cluster 0", "Cluster 1", "Cluster 2"])
+
+# Panel C: PCA clusters
+for k in range(K):
+    mask = cf_kmeans.labels_ == k
+    axes[2].scatter(cf_X_pca[mask, 0], cf_X_pca[mask, 1],
+                    c=["tomato", "steelblue", "seagreen"][k],
+                    label=f"Cluster {k}", s=65, alpha=0.75,
+                    edgecolors="white", linewidths=0.6)
+cf_isos = cf_country_res.loc[cf_X_clust.index, "country_iso3"].values
+for i, iso in enumerate(cf_isos):
+    axes[2].annotate(iso, (cf_X_pca[i, 0], cf_X_pca[i, 1]),
+                     fontsize=6.5, alpha=0.75, xytext=(3, 3), textcoords="offset points")
+axes[2].set_xlabel(f"PC1 ({cf_pca.explained_variance_ratio_[0]:.1%} variance explained)")
+axes[2].set_ylabel(f"PC2 ({cf_pca.explained_variance_ratio_[1]:.1%} variance explained)")
+axes[2].set_title("Country Clusters\n(CATE + Covariates, PCA)", fontweight="bold")
+axes[2].legend(fontsize=8, loc="upper right", framealpha=0.9)
+
+fig.suptitle("Treatment Effect Heterogeneity: Causal Forest DML\nPharma PTA on Immunization Coverage",
+             fontsize=13, fontweight="bold")
+plt.tight_layout(rect=[0, 0.10, 1, 0.94])
+
+# ── Bottom-centre loading annotation (Causal Forest only) ────────────────────
+_feat_names_ann = ["CATE", "GDP/cap", "HealthExp%", "OOP%", "Population"]
+_cf_pc1 = sorted(zip(_feat_names_ann, cf_pca.components_[0]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_cf_pc2 = sorted(zip(_feat_names_ann, cf_pca.components_[1]), key=lambda x: abs(x[1]), reverse=True)[:3]
+_cf_ann = (
+    f"PCA Factor Loadings  (Causal Forest DML)\n"
+    f"PC1 ({cf_pca.explained_variance_ratio_[0]:.0%}):  " + "  |  ".join(f"{n} ({v:+.2f})" for n, v in _cf_pc1) +
+    f"\nPC2 ({cf_pca.explained_variance_ratio_[1]:.0%}):  " + "  |  ".join(f"{n} ({v:+.2f})" for n, v in _cf_pc2)
+)
+fig.text(0.5, 0.01, _cf_ann, ha="center", va="bottom", fontsize=7.5,
+         bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.6, edgecolor="steelblue"))
+
+_cf_out = os.path.join(OUT_DIR, "heterogeneity_causal_forest.png")
+plt.savefig(_cf_out, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"\nCausal Forest heterogeneity plot saved -> {_cf_out}")
+
+# ── 6f: Cluster summaries ─────────────────────────────────────────────────────
+print("\n-- Causal Forest Cluster mean characteristics --")
+print(cf_country_res.groupby("cluster")[["cate"] + COVARS].mean().round(3).to_string())
+print("\n-- Countries per cluster --")
+for k in range(K):
+    cs = sorted(cf_country_res[cf_country_res["cluster"] == k]["country_iso3"].tolist())
+    print(f"Cluster {k}: {cs}")
+print("\nCausal Forest DML pipeline complete.")

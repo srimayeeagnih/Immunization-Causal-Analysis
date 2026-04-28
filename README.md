@@ -144,21 +144,41 @@ Country-level window cleaning drops individual countries lacking ≥3 pre-treatm
 
 ## Key Findings
 
-### Treatment Effect Heterogeneity (DML)
+### Treatment Effect Heterogeneity — Linear DML
 
-![Heterogeneity](outputs/visualization/heterogeneity_viz.png)
+![Linear DML Heterogeneity](outputs/visualization/heterogeneity_clusters.png)
 
 **Plot 1: Mean CATE by WHO Region**
 
-SEARO has the highest mean effect (~0.33 pp log-coverage), though CIs are wide given only 3 countries. EMRO follows at ~0.19, driven by Gulf states (Saudi Arabia, Kuwait, Qatar, Bahrain). WPRO is ~0.15, anchored by Malaysia and Thailand. AMRO and EURO are near zero — consistent with ceiling effects in already well-covered populations.
+SEARO has the highest mean effect (~0.33 pp log-coverage), though CIs are wide given only 3 countries. EMRO follows at ~0.19, driven by Gulf states (Saudi Arabia, Kuwait, Qatar, Bahrain). WPRO is ~0.15, anchored by Malaysia and Thailand. AMRO and EURO are near zero, consistent with ceiling effects in already well-covered populations.
 
 **Plot 2: CATE vs GDP per Capita**
 
-High-CATE countries cluster in the $10k–$40k GDP range (Cluster 0). Countries above $50k GDP (Cluster 1) show near-zero or negative CATEs, consistent with saturation effects. Cluster 2 at low GDP also shows near-zero CATEs, suggesting structural barriers absorb any PTA benefit at that income level.
+High-CATE countries cluster in the $10k to $40k GDP range (Cluster 0, Gulf and ASEAN). Countries above $50k GDP (Cluster 1) show near-zero CATEs, consistent with saturation effects. Cluster 2 at lower GDP also shows near-zero CATEs, suggesting structural barriers absorb any PTA benefit at that income level.
 
 **Plot 3: PCA Country Clusters**
 
-PC1 (38.7% of variance) is an OOP vs CATE axis — higher OOP maps to lower CATE (Cluster 2, lower-middle income). PC2 (33.7%) separates by health system quality: Cluster 1 (USA, Switzerland, Canada, Norway) sits top-left with high GDP and high health expenditure; Cluster 0 (Gulf and ASEAN middle-income) sits bottom-left with moderate spending but higher CATE. ARM is a notable structural outlier.
+PC1 (38.7% of variance) is an OOP vs CATE axis: higher OOP maps to lower CATE (Cluster 2, lower-middle income). PC2 (33.7%) separates by health system quality: Cluster 1 (USA, Switzerland, Canada, Norway) sits top-left with high GDP and high health expenditure; Cluster 0 (Gulf and ASEAN middle-income) sits bottom-left with moderate spending but higher CATE.
+
+---
+
+### Treatment Effect Heterogeneity — Causal Forest DML
+
+![Causal Forest Heterogeneity](outputs/visualization/heterogeneity_causal_forest.png)
+
+The Causal Forest tells a more conservative and structurally different story than LinearDML. The overall ATE collapses to near zero (-0.009), and the regional and cluster patterns largely reverse.
+
+**Plot 1: Mean CATE by WHO Region**
+
+SEARO is the most negative region (~-0.14), driven almost entirely by Indonesia (-0.29), which dominates the regional mean given its size. EMRO follows at ~-0.03, with Gulf states (Oman, Qatar) pulling the average down despite Jordan and Lebanon showing small positive effects. WPRO is near zero. AMRO and EURO show small positive average CATEs. One plausible interpretation is that trade liberalization in Gulf and ASEAN markets redirects pharmaceutical investment toward more commercially attractive segments rather than routine immunization programs, particularly where public health financing is limited and private pharma interests may prioritise branded drugs or R&D activity over public immunization supply chains.
+
+**Plot 2: CATE vs GDP per Capita**
+
+Cluster 0 (upper-middle income, GDP ~$16.6k, Gulf and ASEAN countries) shows a neutral to negative treatment effect (~-0.08), the most striking reversal from LinearDML which had flagged this group as the highest responders. Cluster 1 (high income, GDP ~$57k, Anglosphere and EFTA) shows near-zero CATE (~+0.02), consistent with already-saturated immunization programs where PTAs add little. Cluster 2 (lower-middle income, GDP ~$8.3k, Eastern Europe, LatAm, MENA) shows the only consistently positive CATEs (~+0.03), suggesting health PTAs may provide genuine market access benefits where immunization programs still have room to grow.
+
+**Plot 3: PCA Country Clusters**
+
+PC1 (36.4% of variance) separates by GDP vs OOP: high-GDP, low-OOP countries sit on one side (Clusters 0 and 1) while lower-GDP, high-OOP countries sit on the other (Cluster 2). PC2 (30.8% of variance) then separates Cluster 0 from Cluster 1 by health system funding: Cluster 1 has the highest government health expenditure (~10.6%) and lowest OOP (~16%), representing well-funded public systems where PTAs change little. Cluster 0 has the lowest health expenditure share (~4.2%) and intermediate OOP (~25.8%), and shows negative CATEs. Cluster 2 carries the highest OOP burden (~39.9%) alongside moderate health expenditure (~7.6%), and is the only group where treatment effects are consistently positive, suggesting PTAs may matter most where private cost burden is high but some institutional capacity exists.
 
 ### Event Study Results (DiD Check)
 
